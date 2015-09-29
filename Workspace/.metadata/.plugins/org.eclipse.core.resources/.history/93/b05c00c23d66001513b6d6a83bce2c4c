@@ -1,0 +1,10 @@
+package MyPackage;
+
+public class NoAvailableSlotsForConnectionException extends Exception
+{
+	public NoAvailableSlotsForConnectionException()
+	{
+		
+	}
+	
+}

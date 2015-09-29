@@ -1,0 +1,30 @@
+package MyPackage;
+
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.net.Socket;
+
+import socs.network.node.Router;
+
+public class ExternalRouterConnection extends Thread
+{
+	private Socket socket = null;
+	private ObjectOutputStream socketOutput;
+	private ObjectInputStream socketInput;
+	
+	private final Router router;
+	
+	public ExternalRouterConnection(Router r, Socket socket) throws IOException
+	{
+		this.socket = socket;
+		router = r;
+		
+		socketOutput = new ObjectOutputStream(this.socket.getOutputStream());
+		socketOutput.flush(); //sometimes there are leftover data
+	    
+		socketInput = new ObjectInputStream(this.socket.getInputStream());
+		
+		System.out.print("router connected !!!\n>> ");
+	}
+}

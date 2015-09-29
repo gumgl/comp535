@@ -1,0 +1,70 @@
+package MyPackage;
+
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.net.Socket;
+
+import socs.network.node.Router;
+
+public class ExternalRouterConnection extends Thread
+{
+	private Socket socket;
+	private ObjectOutputStream socketOutput;
+	private ObjectInputStream socketInput;
+	
+	private final Router router;
+	
+	public ExternalRouterConnection(Router r, Socket socket) throws IOException, NoAvailableSlotsForConnectionException
+	{
+		this.socket = socket;
+		router = r;
+		
+		socketOutput = new ObjectOutputStream(this.socket.getOutputStream());
+		socketOutput.flush(); //sometimes there are leftover data
+	    
+		socketInput = new ObjectInputStream(this.socket.getInputStream());
+		
+		router.AddNeighbor(this);
+		
+		System.out.println("A connection has been made");
+	}
+	
+	public void sendMessage(String message)
+	{
+		try
+		{
+			socketOutput.writeObject(message);
+			socketOutput.flush(); //sometimes there are some data left so its good programming to do "flush()"
+		}
+		catch (IOException e)
+		{
+			System.out.println("Failed to send message.");
+		}
+	}
+	
+	@Override
+	public void run()
+	{
+		String receivedMessage = "";
+		
+		while(true)
+	    {
+	      try
+	      {
+	    	  receivedMessage = (String)socketInput.readObject();
+	    	  
+	    	  //TODO: do stuff with the message
+	    	  System.out.println("Received : "+receivedMessage);
+	      }
+	      catch(IOException exception)
+	      {
+	    	  
+	      }
+	      catch(ClassNotFoundException classNotFoundException)
+	      {
+	    	  System.out.println("Received a message that could not be understood.");
+	      }
+	    }
+	}
+}
