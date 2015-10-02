@@ -7,6 +7,6 @@
 <listEntry value="1"/>
 </listAttribute>
 <stringAttribute key="org.eclipse.jdt.launching.MAIN_TYPE" value="socs.network.Main"/>
-<stringAttribute key="org.eclipse.jdt.launching.PROGRAM_ARGUMENTS" value="E:\USB\School\McGill\classes\Comp535\Project\ConfigFiles\router1.conf"/>
+<stringAttribute key="org.eclipse.jdt.launching.PROGRAM_ARGUMENTS" value="C:\Users\Guillaume\git\comp535\Workspace\Comp535Project\conf\router1.conf"/>
 <stringAttribute key="org.eclipse.jdt.launching.PROJECT_ATTR" value="Comp535Project"/>
 </launchConfiguration>
