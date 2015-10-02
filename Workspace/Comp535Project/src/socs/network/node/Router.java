@@ -64,20 +64,23 @@ public class Router {
    * <p/>
    * NOTE: this command should not trigger link database synchronization
    */
+  @SuppressWarnings("unused")
   private void processAttach(String processIP, short processPort,
                              String simulatedIP, short weight)
   {
+	  ExternalRouterConnection createdConnection = null;
 	  try
 	  {
 		Socket connection = new Socket(InetAddress.getByName(processIP), processPort);
-		new ExternalRouterConnection(this, connection).start();
-	  }
-	  catch(NoAvailableSlotsForConnectionException exception)
-	  {
-		  System.out.println("There are no more available slots for connection. Attach Failed.");
+		createdConnection = new ExternalRouterConnection(this, connection, simulatedIP);
+		createdConnection.start();
 	  }
 	  catch (IOException e)
 	  {
+		  if(neighbors.size() > 0)
+		  {
+			  neighbors.remove(neighbors.size()-1);
+		  }
 		  System.out.println("Attach Failed");
 	  }
   }
@@ -111,9 +114,16 @@ public class Router {
    */
   private void processNeighbors()
   {
-	  for (ExternalRouterConnection externalRouterConnection : neighbors)
+	  if(neighbors.size() == 0)
 	  {
-		  externalRouterConnection.printConnectionIP();
+		  System.out.println("There are no neighbors.");
+	  }
+	  else
+	  {
+		  for (ExternalRouterConnection externalRouterConnection : neighbors)
+		  {
+			  externalRouterConnection.printConnectionIP();
+		  }
 	  }
   }
 

@@ -21,19 +21,29 @@ public class ExternalRouterConnection extends Thread
 	private RouterStatus myRouterStatus;	
 	
 	
-	public ExternalRouterConnection(Router r, Socket socket) throws IOException, NoAvailableSlotsForConnectionException
+	public ExternalRouterConnection(Router r, Socket socket, String simulatedIPadress) throws IOException
 	{
 		this.socket = socket;
 		router = r;
+		externalRouterDescription.simulatedIPAddress = simulatedIPadress;
 		
-		socketOutput = new ObjectOutputStream(this.socket.getOutputStream());
-		socketOutput.flush(); //sometimes there are leftover data
+		try
+		{
+			router.AddNeighbor(this);
+		
+			socketOutput = new ObjectOutputStream(this.socket.getOutputStream());
+			socketOutput.flush(); //sometimes there are leftover data
 	    
-		socketInput = new ObjectInputStream(this.socket.getInputStream());
+			socketInput = new ObjectInputStream(this.socket.getInputStream());
 		
-		router.AddNeighbor(this);
 		
-		System.out.println("A connection has been made");
+			System.out.println("A connection has been made");
+		}
+		catch(NoAvailableSlotsForConnectionException exception)
+		{
+			System.out.println("There are no more available slots for connection. Attach Failed.");
+			socket.close();
+		}
 	}
 	
 	
@@ -108,6 +118,10 @@ public class ExternalRouterConnection extends Thread
 	      {
 	    	  System.out.println("Received a message that could not be understood.");
 	      }
+	      catch(NullPointerException exception)
+	      {
+	    	  return;
+	      }
 	    }
 	}
 	
@@ -165,6 +179,13 @@ public class ExternalRouterConnection extends Thread
 	//prints the simulated IP of the other router
 	public void printConnectionIP()
 	{
-		System.out.println(externalRouterDescription.simulatedIPAddress);
+		if(externalRouterDescription.simulatedIPAddress == null)
+		{
+			System.out.println("xxx.xxx.xxx.xxx");
+		}
+		else
+		{
+			System.out.println(externalRouterDescription.simulatedIPAddress);
+		}
 	}
 }

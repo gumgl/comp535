@@ -33,12 +33,8 @@ public class ServerListenerThread extends Thread
 			try
 			{
 				connectionRequest = serverSocket.accept();
-				externalConnection = new ExternalRouterConnection(router, connectionRequest);
+				externalConnection = new ExternalRouterConnection(router, connectionRequest, null);
 				externalConnection.start();
-			}
-			catch(NoAvailableSlotsForConnectionException exception)
-			{
-				System.out.println("There are no more available slots for connection.");
 			}
 			catch (IOException e)
 			{
