@@ -3,7 +3,15 @@ package socs.network.node;
 import socs.network.util.Configuration;
 
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStreamReader;
+import java.net.InetAddress;
+import java.net.Socket;
+import java.util.ArrayList;
+
+import MyPackage.ExternalRouterConnection;
+import MyPackage.NoAvailableSlotsForConnectionException;
+import MyPackage.ServerListenerThread;
 
 
 public class Router {
@@ -14,10 +22,18 @@ public class Router {
 
   //assuming that all routers are with 4 ports
   Link[] ports = new Link[4];
+  
+  //The 4 connections
+  private ArrayList<ExternalRouterConnection> neighbors = new ArrayList<ExternalRouterConnection>();
+  
+  ServerListenerThread listener;
 
-  public Router(Configuration config) {
+  public Router(Configuration config) throws IOException
+  {
     rd.simulatedIPAddress = config.getString("socs.network.router.ip");
     lsd = new LinkStateDatabase(rd);
+    
+    MyRouterSetup();
   }
 
   /**
@@ -48,16 +64,37 @@ public class Router {
    * <p/>
    * NOTE: this command should not trigger link database synchronization
    */
+  @SuppressWarnings("unused")
   private void processAttach(String processIP, short processPort,
-                             String simulatedIP, short weight) {
-
+                             String simulatedIP, short weight)
+  {
+	  ExternalRouterConnection createdConnection = null;
+	  try
+	  {
+		Socket connection = new Socket(InetAddress.getByName(processIP), processPort);
+		createdConnection = new ExternalRouterConnection(this, connection, simulatedIP);
+		createdConnection.start();
+	  }
+	  catch (IOException e)
+	  {
+		  if(neighbors.size() > 0)
+		  {
+			  neighbors.remove(neighbors.size()-1);
+		  }
+		  System.out.println("Attach Failed");
+	  }
   }
 
   /**
    * broadcast Hello to neighbors
    */
-  private void processStart() {
-
+  private void processStart()
+  {
+	  for(ExternalRouterConnection externalConnection : neighbors)
+	  {
+		  externalConnection.setRouterStatus(RouterStatus.INIT);
+		  externalConnection.sendHELLOmessage();
+	  }
   }
 
   /**
@@ -75,15 +112,59 @@ public class Router {
   /**
    * output the neighbors of the routers
    */
-  private void processNeighbors() {
-
+  private void processNeighbors()
+  {
+	  if(neighbors.size() == 0)
+	  {
+		  System.out.println("There are no neighbors.");
+	  }
+	  else
+	  {
+		  for (ExternalRouterConnection externalRouterConnection : neighbors)
+		  {
+			  externalRouterConnection.printConnectionIP();
+		  }
+	  }
   }
 
   /**
    * disconnect with all neighbors and quit the program
    */
-  private void processQuit() {
-
+  private void processQuit()
+  {
+	 //we dont want to have multiple theads working with the neighbors arraylist
+	 ArrayList<ExternalRouterConnection> connectionsToRemove = new ArrayList<ExternalRouterConnection>();
+	  
+	 for (ExternalRouterConnection externalRouterConnection : neighbors)
+	 {
+		 connectionsToRemove.add(externalRouterConnection);
+	 }
+	 
+	  
+	 for (ExternalRouterConnection externalRouterConnection : connectionsToRemove)
+	 {
+		 externalRouterConnection.interrupt();
+		 try
+		 {
+			 externalRouterConnection.join();
+		 }
+		 catch (InterruptedException e)
+		 {
+			 //do nothing
+		 }
+	  }
+	 
+	  neighbors.clear();
+	  
+	  listener.interrupt();
+	  try
+	  {
+		listener.join();
+	  }
+	  catch (InterruptedException e)
+	  {
+		//do nothing
+	  }
   }
 
   public void terminal() {
@@ -101,6 +182,7 @@ public class Router {
           processDisconnect(Short.parseShort(cmdLine[1]));
         } else if (command.startsWith("quit")) {
           processQuit();
+          break;
         } else if (command.startsWith("attach ")) {
           String[] cmdLine = command.split(" ");
           processAttach(cmdLine[1], Short.parseShort(cmdLine[2]),
@@ -116,7 +198,7 @@ public class Router {
           processNeighbors();
         } else {
           //invalid command
-          break;
+          System.out.println("Invalid Command.");
         }
         System.out.print(">> ");
         command = br.readLine();
@@ -126,6 +208,43 @@ public class Router {
     } catch (Exception e) {
       e.printStackTrace();
     }
+  }
+  
+  
+  private void MyRouterSetup() throws IOException
+  {
+	  int randomPortNumber = (int)(Math.random()*25000)+2000;
+	  
+	  listener = new ServerListenerThread(this, randomPortNumber);
+	  listener.start();
+	  
+	  System.out.println("Router port number: "+randomPortNumber);
+	  System.out.println("Router simlated IP address: "+rd.simulatedIPAddress);
+  }
+  
+  
+  public void AddNeighbor(ExternalRouterConnection connection) throws NoAvailableSlotsForConnectionException
+  {
+	  if(neighbors.size() < 4)
+	  {
+		  neighbors.add(connection);
+	  }
+	  else
+	  {
+		  throw new NoAvailableSlotsForConnectionException();
+	  }
+  }
+  
+  
+  public void RemoveNeighbor(ExternalRouterConnection connection)
+  {
+	  neighbors.remove(connection);
+  }
+  
+  
+  public String getSimulatedIP()
+  {
+	  return rd.simulatedIPAddress;
   }
 
 }
