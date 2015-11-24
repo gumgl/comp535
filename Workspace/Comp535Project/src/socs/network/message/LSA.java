@@ -21,4 +21,24 @@ public class LSA implements Serializable {
     sb.append("\n");
     return sb.toString();
   }
+  
+  public void addLink(String id, int portNumber, int connectionWeight)
+  {
+	  lsaSeqNumber++;
+	  links.add(new LinkDescription(id, portNumber, connectionWeight));
+  }
+  
+  public void removeLink(String id)
+  {
+	  
+	  for(LinkDescription link : links)
+	  {
+		  if(link.linkID.equals(id))
+		  {
+			  lsaSeqNumber++;
+			  links.remove(link);
+			  break;
+		  }
+	  }
+  }
 }

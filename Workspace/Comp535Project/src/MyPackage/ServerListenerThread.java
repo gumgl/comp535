@@ -33,7 +33,7 @@ public class ServerListenerThread extends Thread
 			try
 			{
 				connectionRequest = serverSocket.accept();
-				externalConnection = new ExternalRouterConnection(router, connectionRequest, null);
+				externalConnection = new ExternalRouterConnection(router, connectionRequest, null, -1, router.nextConnectionID());
 				externalConnection.start();
 			}
 			catch (IOException e)
