@@ -19,6 +19,8 @@ import MyPackage.ServerListenerThread;
 
 
 public class Router {
+	
+	public static final boolean ALIVE_DEBUG = false;
 
   protected LinkStateDatabase lsd;
 
@@ -38,12 +40,14 @@ public class Router {
 
   public Router(Configuration config) throws IOException
   {
-    rd.simulatedIPAddress = config.getString("socs.network.router.ip");
-    lsd = new LinkStateDatabase(rd);
-    
-    MyRouterSetup();
-    myTimer = new MyTimer(this);
-    myTimer.start();
+	  synchronized (this) {
+		rd.simulatedIPAddress = config.getString("socs.network.router.ip");
+		lsd = new LinkStateDatabase(rd);
+		
+		MyRouterSetup();
+		myTimer = new MyTimer(this);
+		myTimer.start();
+	  }
   }
 
   /**
@@ -55,12 +59,16 @@ public class Router {
    */
   private void processDetect(String destinationIP)
   {
-	  System.out.println(lsd.getShortestPath(destinationIP));
+	  synchronized (this) {
+		  System.out.println(lsd.getShortestPath(destinationIP));
+	  }
   }
   
   private void processDetectDebug(String destinationIP)
   {
-	  System.out.println(lsd.getShortestPathDebug(destinationIP));
+	  synchronized (this) {
+		  System.out.println(lsd.getShortestPathDebug(destinationIP));
+	  }
   }
 
   /**
@@ -72,12 +80,14 @@ public class Router {
    */
   private void processDisconnect(short portNumber) throws IOException
   {
-	  for(ExternalRouterConnection connection : neighbors)
-	  {
-		  if(connection.routerConnectionID == portNumber)
+	  synchronized (this) {
+		  for(ExternalRouterConnection connection : neighbors)
 		  {
-			  disconnect(connection);
-			  break;
+			  if(connection.routerConnectionID == portNumber)
+			  {
+				  disconnect(connection);
+				  break;
+			  }
 		  }
 	  }
   }
@@ -93,22 +103,24 @@ public class Router {
   private void processAttach(String processIP, short processPort,
                              String simulatedIP, short weight)
   {
-	  ExternalRouterConnection createdConnection = null;
-	  try
-	  {
-		Socket connection = new Socket(InetAddress.getByName(processIP), processPort);
-		createdConnection = new ExternalRouterConnection(this, connection, simulatedIP, weight, nextConnectionID());
-		createdConnection.start();
-		
-		lsd.getLSA(this.getSimulatedIP()).addLink(simulatedIP, processPort, weight);
-	  }
-	  catch (IOException e)
-	  {
-		  if(neighbors.size() > 0)
+	  synchronized (this) {
+		  ExternalRouterConnection createdConnection = null;
+		  try
 		  {
-			  neighbors.remove(neighbors.size()-1);
+			Socket connection = new Socket(InetAddress.getByName(processIP), processPort);
+			createdConnection = new ExternalRouterConnection(this, connection, simulatedIP, weight, nextConnectionID());
+			createdConnection.start();
+			
+			lsd.getLSA(this.getSimulatedIP()).addLink(simulatedIP, processPort, weight);
 		  }
-		  System.out.println("Attach Failed");
+		  catch (IOException e)
+		  {
+			  if(neighbors.size() > 0)
+			  {
+				  neighbors.remove(neighbors.size()-1);
+			  }
+			  System.out.println("Attach Failed");
+		  }
 	  }
   }
 
@@ -117,13 +129,15 @@ public class Router {
    */
   private void processStart()
   {
-	  for(ExternalRouterConnection externalConnection : neighbors)
-	  {
-		  if(externalConnection.myConnection)
+	  synchronized (this) {
+		  for(ExternalRouterConnection externalConnection : neighbors)
 		  {
-			  connectionsToFinish++;
-			  externalConnection.setRouterStatus(RouterStatus.INIT);
-			  externalConnection.sendHELLOmessage();
+			  if(externalConnection.myConnection)
+			  {
+				  connectionsToFinish++;
+				  externalConnection.setRouterStatus(RouterStatus.INIT);
+				  externalConnection.sendHELLOmessage();
+			  }
 		  }
 	  }
   }
@@ -138,7 +152,7 @@ public class Router {
   private void processConnect(String processIP, short processPort,
                               String simulatedIP, short weight) {
 	  
-	  synchronized (neighbors)
+	  synchronized (this)
 	  {
 		int size = neighbors.size();
 	  	this.processAttach(processIP, processPort, simulatedIP, weight);
@@ -156,15 +170,17 @@ public class Router {
    */
   private void processNeighbors()
   {
-	  if(neighbors.size() == 0)
-	  {
-		  System.out.println("There are no neighbors.");
-	  }
-	  else
-	  {
-		  for (ExternalRouterConnection externalRouterConnection : neighbors)
+	  synchronized (this) {
+		  if(neighbors.size() == 0)
 		  {
-			  externalRouterConnection.printConnectionIP();
+			  System.out.println("There are no neighbors.");
+		  }
+		  else
+		  {
+			  for (ExternalRouterConnection externalRouterConnection : neighbors)
+			  {
+				  externalRouterConnection.printConnectionIP();
+			  }
 		  }
 	  }
   }
@@ -181,9 +197,10 @@ public class Router {
     try {
       InputStreamReader isReader = new InputStreamReader(System.in);
       BufferedReader br = new BufferedReader(isReader);
-      System.out.print(">> ");
-      String command = br.readLine();
       while (true) {
+        System.out.print("G>> ");
+        System.out.flush();
+        String command = br.readLine();
         if (command.startsWith("detect ")) {
           String[] cmdLine = command.split(" ");
           processDetect(cmdLine[1]);
@@ -215,8 +232,6 @@ public class Router {
           //invalid command
           System.out.println("Invalid Command.");
         }
-        System.out.print(">> ");
-        command = br.readLine();
       }
       isReader.close();
       br.close();
@@ -228,33 +243,39 @@ public class Router {
   
   private void MyRouterSetup() throws IOException
   {
-	  int randomPortNumber = (int)(Math.random()*25000)+2000;
-	  
-	  listener = new ServerListenerThread(this, randomPortNumber);
-	  listener.start();
-	  
-	  System.out.println("Router port number: "+randomPortNumber);
-	  System.out.println("Router simlated IP address: "+rd.simulatedIPAddress);
+	  synchronized (this) {
+		  int randomPortNumber = (int)(Math.random()*25000)+2000;
+		  
+		  listener = new ServerListenerThread(this, randomPortNumber);
+		  listener.start();
+		  
+		  System.out.println("Router port number: "+randomPortNumber);
+		  System.out.println("Router simlated IP address: "+rd.simulatedIPAddress);
+	  }
   }
   
   
   public void AddNeighbor(ExternalRouterConnection connection) throws NoAvailableSlotsForConnectionException
   {
-	  if(neighbors.size() < 4)
-	  {
-		  neighbors.add(connection);
-		  lsd.getLSA(getSimulatedIP()).lsaSeqNumber++;
-	  }
-	  else
-	  {
-		  throw new NoAvailableSlotsForConnectionException();
+	  synchronized (this) {
+		  if(neighbors.size() < 4)
+		  {
+			  neighbors.add(connection);
+			  lsd.getLSA(getSimulatedIP()).lsaSeqNumber++;
+		  }
+		  else
+		  {
+			  throw new NoAvailableSlotsForConnectionException();
+		  }
 	  }
   }
   
   
   public void RemoveNeighbor(ExternalRouterConnection connection)
   {
-	  neighbors.remove(connection);
+	  synchronized (this) {
+		  neighbors.remove(connection);
+	  }
   }
   
   
@@ -265,12 +286,14 @@ public class Router {
   
   public void fillLSAarray(Vector<LSA> lsaArray)
   {
-	  lsd.fillLSAarray(lsaArray);
+	  synchronized (this) {
+		  lsd.fillLSAarray(lsaArray);
+	  }
   }
   
   public boolean updateLinkStateDatabase(Vector<LSA> lsaArray)
   {
-	  synchronized(lsd)
+	  synchronized(this)
 	  {
 		  return lsd.updateDatabase(lsaArray);
 	  }
@@ -278,123 +301,138 @@ public class Router {
   
   public void addLSAlink(String id, int connectionWeight)
   {
-	  LSA temp = lsd.getLSA(getSimulatedIP());
-	  temp.links.add(new LinkDescription(id, 0, connectionWeight));
-	  temp.lsaSeqNumber++;
+	  synchronized (this) {
+		  LSA temp = lsd.getLSA(getSimulatedIP());
+		  temp.links.add(new LinkDescription(id, 0, connectionWeight));
+		  temp.lsaSeqNumber++;
+	  }
   }
   
   public int nextConnectionID()
   {
-	  boolean[] ports = new boolean[4];
-	  for(ExternalRouterConnection connection : neighbors)
-	  {
-		  ports[connection.routerConnectionID] = true;
-	  }
-	  
-	  for(int i=0; i<4; i++)
-	  {
-		  if(!ports[i])
+	  synchronized (this) {
+		  boolean[] ports = new boolean[4];
+		  for(ExternalRouterConnection connection : neighbors)
 		  {
-			  return i;
+			  ports[connection.routerConnectionID] = true;
 		  }
+		  
+		  for(int i=0; i<4; i++)
+		  {
+			  if(!ports[i])
+			  {
+				  return i;
+			  }
+		  }
+		  
+		  return 0;
 	  }
-	  
-	  return 0;
   }
   
   
   public void broadCastLSAupdate(int senderID) throws IOException
   {
-	  for(ExternalRouterConnection connection : neighbors)
-	  {
-		  if(connection.myRouterStatus != null && connection.routerConnectionID != senderID)
+	  synchronized (this) {
+		  for(ExternalRouterConnection connection : neighbors)
 		  {
-			  connection.sendLSAupdate();
+			  if(connection.myRouterStatus != null && connection.routerConnectionID != senderID)
+			  {
+				  connection.sendLSAupdate();
+			  }
 		  }
 	  }
   }
   
   public void printLSA()
   {
-	  System.out.println("LSA database:");
-	  for(String lsaID: lsd.lsaList)
-	  {
-		  System.out.println(lsaID+":"+lsd._store.get(lsaID).links.toString());
+	  synchronized (this) {
+		  System.out.println("LSA database:");
+		  for(String lsaID: lsd.lsaList)
+		  {
+			  System.out.println(lsaID+":"+lsd._store.get(lsaID).links.toString());
+		  }
+		  System.out.println("count: " + lsd.lsaList.size());
 	  }
-	  System.out.println("count: " + lsd.lsaList.size());
   }
   
   public void connectionFinished() throws IOException
   {
-	  connectionsToFinish--;
-	  if(connectionsToFinish == 0)
-	  {
-		  broadCastLSAupdate(0);
+	  synchronized (this) {
+		  connectionsToFinish--;
+		  if(connectionsToFinish == 0)
+		  {
+			  broadCastLSAupdate(0);
+		  }
 	  }
   }
   
   public void disconnect(ExternalRouterConnection connection) throws IOException
   {
-	  connection.sendDisconnectMessage();
-	  connection.disconnect();
-	  neighbors.remove(connection);
-	  lsd.removeConnection(this.getSimulatedIP(), connection.getIPaddress());
-	  broadCastLSAupdate(-1);
+	  synchronized (this) {
+		  connection.sendDisconnectMessage();
+		  connection.disconnect();
+		  neighbors.remove(connection);
+		  lsd.removeConnection(this.getSimulatedIP(), connection.getIPaddress());
+		  broadCastLSAupdate(-1);
+	  }
   }
   
   public void removeLSDConnection(String ipAddress)
   {
-	  lsd.removeConnection(this.getSimulatedIP(), ipAddress);
+	  synchronized (this) {
+		  lsd.removeConnection(this.getSimulatedIP(), ipAddress);
+	  }
   }
   
-  public void sendIsAliveMessages()
+  public void sendAliveMessages()
   {
-	  for(ExternalRouterConnection connection : neighbors)
-	  {
-		  connection.sendIsAliveRequest();
+	  synchronized (this) {
+		  if (ALIVE_DEBUG && neighbors.size() > 0)
+			  System.out.print("X");
+		  for(ExternalRouterConnection connection : neighbors)
+		  {
+			  connection.sendAliveMessage();
+		  }
 	  }
   }
   
   public void checkIsAlive()
   {
-	  ArrayList<ExternalRouterConnection> toRemove = new ArrayList<ExternalRouterConnection>();
-	  
-	  for(ExternalRouterConnection connection : neighbors)
-	  {
-		  if(connection.receivedIsAlive)
+	  synchronized (this) {
+		  ArrayList<ExternalRouterConnection> toRemove = new ArrayList<ExternalRouterConnection>();
+		  // Because we cannot remove during a for each loop
+		  
+		  for(ExternalRouterConnection connection : neighbors)
 		  {
-			  connection.receivedIsAlive = false;
+			  if (System.currentTimeMillis() - connection.lastAliveMessage > MyTimer.CHECK_INTERVAL * 1000)
+			  {
+				  String ip = connection.getIPaddress();
+				  if(ip == null)
+				  {
+					  System.out.println("Lost connection with some router.");
+				  }
+				  else
+				  {
+					  System.out.println("Connection with "+ip+" lost due to time out.");
+					  lsd.removeConnection(this.getSimulatedIP(), connection.getIPaddress());
+				  }
+				  toRemove.add(connection);
+			  }
 		  }
-		  else
+		  
+		  if(!toRemove.isEmpty())
 		  {
-			  String ip = connection.getIPaddress();
-			  if(ip == null)
+			  for(ExternalRouterConnection connection : toRemove)
 			  {
-				  System.out.println("Lost connection with some router.");
+				  neighbors.remove(connection);
 			  }
-			  else
-			  {
-				  System.out.println("Lost connection with "+ip);
-				  lsd.removeConnection(this.getSimulatedIP(), connection.getIPaddress());
-			  }
-			  toRemove.add(connection);
+				  try {
+					broadCastLSAupdate(-1);
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
 		  }
-	  }
-	  
-	  for(ExternalRouterConnection connection : toRemove)
-	  {
-		  neighbors.remove(connection);
-	  }
-	  
-	  if(toRemove.size() > 0)
-	  {
-		  try {
-			broadCastLSAupdate(-1);
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
 	  }
   }
-
 }

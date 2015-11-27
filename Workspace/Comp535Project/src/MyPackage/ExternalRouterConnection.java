@@ -4,6 +4,8 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.Socket;
+import java.net.SocketException;
+import java.util.Date;
 import java.util.Vector;
 
 import socs.network.message.LSA;
@@ -24,9 +26,9 @@ public class ExternalRouterConnection extends Thread
 	public RouterStatus myRouterStatus;
 	private int pathLength = -1;
 	public boolean myConnection = false;
+	public long lastAliveMessage;
 	public int routerConnectionID = 0;
 	
-	public boolean receivedIsAlive = true;
 	public boolean connected = true;
 	
 	
@@ -37,6 +39,7 @@ public class ExternalRouterConnection extends Thread
 		router = r;
 		externalRouterDescription.simulatedIPAddress = simulatedIPadress;
 		routerConnectionID = connetionID;
+		lastAliveMessage = System.currentTimeMillis();
 		if(simulatedIPadress != null)
 		{
 			myConnection = true;
@@ -44,7 +47,10 @@ public class ExternalRouterConnection extends Thread
 		
 		try
 		{
-			router.AddNeighbor(this);
+
+			synchronized (router) {
+				router.AddNeighbor(this);
+			}
 		
 			socketOutput = new ObjectOutputStream(this.socket.getOutputStream());
 			socketOutput.flush(); //sometimes there are leftover data
@@ -65,85 +71,99 @@ public class ExternalRouterConnection extends Thread
 	//send HELLO message to the otehr side of the connection
 	public void sendHELLOmessage()
 	{
-		try
-		{
-			SOSPFPacket packet = new SOSPFPacket();
-			packet.neighborID = router.getSimulatedIP();
-			packet.routerID = router.getSimulatedIP();
-			packet.lsaArray = new Vector<LSA>();
-			packet.pathLength = this.pathLength;
-			router.fillLSAarray(packet.lsaArray);
-			
-			socketOutput.writeObject(packet);
-			socketOutput.flush(); //push the data through
-		}
-		catch (IOException e)
-		{
-			System.out.println("Failed to send message.");
+		synchronized (socketOutput) {
+			try
+			{
+				SOSPFPacket packet = new SOSPFPacket();
+	
+				synchronized (router) {
+					packet.neighborID = router.getSimulatedIP();
+					packet.routerID = router.getSimulatedIP();
+					packet.lsaArray = new Vector<LSA>();
+					packet.pathLength = this.pathLength;
+					router.fillLSAarray(packet.lsaArray);
+				}
+				
+				socketOutput.writeObject(packet);
+				socketOutput.flush(); //push the data through
+			}
+			catch (IOException e)
+			{
+				System.out.println("Failed to send message.");
+			}
 		}
 	}
 	
 	public void sendDisconnectMessage() throws IOException
 	{
-		SOSPFPacket packet = new SOSPFPacket();
-		packet.sospfType = 3; //disconnect message
-		
-		socketOutput.writeObject(packet);
-		socketOutput.flush();
-	}
-	
-	public void sendIsAliveACK()
-	{
-		try
-		{
-			SOSPFPacket packet = new SOSPFPacket();
-			packet.sospfType = 2; //is alive request
-		
-			socketOutput.writeObject(packet);
-			socketOutput.flush();
-		}
-		catch(Exception e)
-		{
-			//do nothing
+		synchronized (socketOutput) {
+			try {
+				SOSPFPacket packet = new SOSPFPacket();
+				packet.sospfType = 3; //disconnect message
+				
+				socketOutput.writeObject(packet);
+				socketOutput.flush();
+			}
+			catch (SocketException e) {
+				// Socket disconnected
+			}
+			catch(IOException e)
+			{
+				//do nothing
+				e.printStackTrace();
+			}
+			
 		}
 	}
 	
-	public void sendIsAliveRequest()
+	public void sendAliveMessage()
 	{
-		try
-		{
-			SOSPFPacket packet = new SOSPFPacket();
-			packet.sospfType = 4; //is alive request
-		
-			socketOutput.writeObject(packet);
-			socketOutput.flush();
-		}
-		catch(Exception e)
-		{
-			//do nothing
+		synchronized (socketOutput) {
+			try
+			{
+				if (connected) {
+					SOSPFPacket packet = new SOSPFPacket();
+					packet.sospfType = 2; //is alive request
+					socketOutput.writeObject(packet);
+					socketOutput.flush();
+				}
+			}
+			catch (SocketException e) {
+				// Socket disconnected
+				System.out.println();
+			}
+			catch(IOException e)
+			{
+				//do nothing
+				e.printStackTrace();
+			}
 		}
 	}
 	
 	public void sendLSAupdate() throws IOException
 	{
 		SOSPFPacket packet = new SOSPFPacket();
-		packet.neighborID = router.getSimulatedIP();
-		packet.routerID = router.getSimulatedIP();
 		packet.lsaArray = new Vector<LSA>();
 		packet.pathLength = this.pathLength;
 		packet.sospfType = 1;
-		router.fillLSAarray(packet.lsaArray);
+		synchronized (router) {
+			packet.neighborID = router.getSimulatedIP();
+			packet.routerID = router.getSimulatedIP();
+			router.fillLSAarray(packet.lsaArray);
+		}
 		
 		/*System.out.println("sending:");
 		for(LSA lsa : packet.lsaArray)
 		{
 			System.out.println(lsa.linkStateID + ":" + lsa.links.toString());
 		}*/
-		
-		socketOutput.flush();
-		socketOutput.reset();
-		socketOutput.writeObject(packet);
-		socketOutput.flush(); //push the data through
+
+		synchronized (socketOutput) {
+			socketOutput.flush();
+			socketOutput.reset();
+			socketOutput.writeObject(packet);
+			socketOutput.flush(); //push the data through<
+		}
 	}
 	
 	
@@ -170,15 +190,13 @@ public class ExternalRouterConnection extends Thread
 	    	  }
 	    	  else if(receivedMessage.sospfType == 2)
 	    	  {
-	    		  receivedIsAlive = true;
+	    		  if (Router.ALIVE_DEBUG)
+	    			  System.out.print(this.getIPaddress());
+	    		  lastAliveMessage = System.currentTimeMillis();
 	    	  }
 	    	  else if(receivedMessage.sospfType == 3)
 	    	  {
 	    		  receivedDisconnect();
-	    	  }
-	    	  else if(receivedMessage.sospfType == 4)
-	    	  {
-	    		  sendIsAliveACK();
 	    	  }
 	    	  else
 	    	  {
@@ -208,46 +226,48 @@ public class ExternalRouterConnection extends Thread
 		
 		externalRouterDescription.simulatedIPAddress = receivedIPaddress;
 		
-		router.updateLinkStateDatabase(receivedMessage.lsaArray);
-		
-		
-		if(myRouterStatus == null)
-		{
-			setRouterStatus(RouterStatus.INIT);
+		synchronized (router) {
+			router.updateLinkStateDatabase(receivedMessage.lsaArray);
 			
-			if(this.pathLength == -1)
+			
+			if(myRouterStatus == null)
 			{
-				pathLength = receivedMessage.pathLength;
-				router.addLSAlink(receivedIPaddress, receivedMessage.pathLength);
+				setRouterStatus(RouterStatus.INIT);
+				
+				if(this.pathLength == -1)
+				{
+					pathLength = receivedMessage.pathLength;
+					router.addLSAlink(receivedIPaddress, receivedMessage.pathLength);
+				}
+				
+				System.out.println("Received HELLO from "+receivedIPaddress+";");
+				System.out.println("set "+receivedIPaddress+" state to INIT;");
+				
+				sendHELLOmessage();
 			}
-			
-			System.out.println("Received HELLO from "+receivedIPaddress+";");
-			System.out.println("set "+receivedIPaddress+" state to INIT;");
-			
-			sendHELLOmessage();
-		}
-		else if(myRouterStatus == RouterStatus.INIT)
-		{
-			setRouterStatus(RouterStatus.TWO_WAY);
-			
-			if(this.pathLength == -1)
+			else if(myRouterStatus == RouterStatus.INIT)
 			{
-				pathLength = receivedMessage.pathLength;
-				router.addLSAlink(receivedIPaddress, receivedMessage.pathLength);
+				setRouterStatus(RouterStatus.TWO_WAY);
+				
+				if(this.pathLength == -1)
+				{
+					pathLength = receivedMessage.pathLength;
+					router.addLSAlink(receivedIPaddress, receivedMessage.pathLength);
+				}
+				
+				System.out.println("Received HELLO from "+receivedIPaddress+";");
+				System.out.println("set "+receivedIPaddress+" state to TWO_WAY;");
+				
+				
+				router.broadCastLSAupdate(routerConnectionID);
+				//router.printLSA();
+				
+				sendHELLOmessage();
 			}
-			
-			System.out.println("Received HELLO from "+receivedIPaddress+";");
-			System.out.println("set "+receivedIPaddress+" state to TWO_WAY;");
-			
-			
-			router.broadCastLSAupdate(routerConnectionID);
-			//router.printLSA();
-			
-			sendHELLOmessage();
-		}
-		else
-		{
-			router.connectionFinished();
+			else
+			{
+				router.connectionFinished();
+			}
 		}
 	}
 	
@@ -256,7 +276,9 @@ public class ExternalRouterConnection extends Thread
 		
 		if(router.updateLinkStateDatabase(message.lsaArray))
 		{
-			router.broadCastLSAupdate(routerConnectionID);
+			synchronized (this) {
+				router.broadCastLSAupdate(routerConnectionID);
+			}
 		}
 	}
 	
@@ -264,16 +286,22 @@ public class ExternalRouterConnection extends Thread
 	{
 		if(getIPaddress()!=null)
 		{
-			System.out.println("Lost connection with "+getIPaddress());
+			System.out.println("Connection with "+getIPaddress()+" was disconnected.");
 		}
 		
 		socketInput.close();
-		socketOutput.close();
+
+		synchronized (socketOutput) {
+			socketOutput.close();
+		}
 		socket.close();
 		connected = false;
-		router.RemoveNeighbor(this);
-		router.removeLSDConnection(getIPaddress());
-		router.broadCastLSAupdate(-1);
+
+		synchronized (router) {
+			router.RemoveNeighbor(this);
+			router.removeLSDConnection(getIPaddress());
+			router.broadCastLSAupdate(-1);
+		}
 	}
 	
 	
@@ -324,7 +352,9 @@ public class ExternalRouterConnection extends Thread
 	public void disconnect() throws IOException
 	{
 		socket.close();
-		socketOutput.close();
+		synchronized (socketOutput) {
+			socketOutput.close();
+		}
 		socketInput.close();
 	}
 }

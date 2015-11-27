@@ -4,10 +4,11 @@ import socs.network.node.Router;
 
 public class MyTimer extends Thread
 {
+	public final static int CHECK_INTERVAL = 5; // in seconds
+	public final static int SEND_INTERVAL = 3; // in seconds
 	Router router = null;
 	
-	int sendMessageTime = 3;
-	int checkTime = 5;
+	int timer = 0;
 	
 	public MyTimer(Router r)
 	{
@@ -25,20 +26,19 @@ public class MyTimer extends Thread
 				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}
-			
-			sendMessageTime--;
-			checkTime--;
-		
-			if(sendMessageTime == 0)
+			timer ++;
+			if(timer % SEND_INTERVAL == 0)
 			{
-				sendMessageTime = 3;
-				router.sendIsAliveMessages();
+				synchronized (router) {
+					router.sendAliveMessages();
+				}
 			}
 		
-			if(checkTime == 0)
+			if(timer % CHECK_INTERVAL == 0)
 			{
-				checkTime = 5;
-				router.checkIsAlive();
+				synchronized (router) {
+					router.checkIsAlive();
+				}
 			}
 		}
 	}
